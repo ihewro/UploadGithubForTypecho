@@ -50,6 +50,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
      */
     public static function config(Typecho_Widget_Helper_Form $form)
     {
+        $version = self::getPluginVersion("UploadGithubForTypecho_Plugin","UploadGithubForTypecho");
         echo '
                 <style>
                 p.notice {
@@ -78,7 +79,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
                             async: true,
                             type: "GET",
                             success: function (data) {
-                                var now = "1.1.0";
+                                var now = "'.$version.'";
                                 var newest = data[0][\'tag_name\'];
                                 if(newest == null){
                                     notice = "检查更新失败，请手动访问插件项目地址获取更新。";
@@ -149,6 +150,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $ext = self::getSafeName($file['name']);
         //判定是否是允许的文件类型
         if (!Widget_Upload::checkFileType($ext) || Typecho_Common::isAppEngine()) {
+            self::writeErrorLog($file['name'], "[local] not allowed file type or engine");
             return false;
         }
         //获取设置参数
@@ -164,6 +166,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $uploadfile = self::getUploadFile($file);
         //如果没有临时文件，则退出
         if (!isset($uploadfile)) {
+            self::writeErrorLog($path_relatively, "[local] do not have temp file");
             return false;
         }
         $fileContent = file_get_contents($uploadfile);
@@ -182,41 +185,28 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
             );
             $data['committer'] = $committer;
         }
-        $header = array(
-            "Content-Type:application/vnd.github.v3.json",
-            "User-Agent:" . $options->githubRepo,
-            "Authorization: token " . $options->githubToken
-        );
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "https://api.github.com/repos/" . $options->githubUser . "/" . $options->githubRepo . "/contents" . $path_relatively );
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        $output = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
-        if ($http_code != 201) {
-            $output = json_decode($output,true);
-            self::writeErrorLog($path_relatively, "[Github][upload][" . $http_code . "]" . $output['message']);
-        }
+        $ok = self::curlGithub("Upload","PUT",$data,$path_relatively)["ok"];
 
+        // todo github上传成功才写到本地
         /* 写到本地文件 */
         if ($options->ifSave == 'save') {
+            if ($ok){
+                self::writeErrorLog($file['name'], "[local] not allowed file type or engine");
+                return false;// 似乎不能自定义抛出具体错误
+            }
             if (!is_dir($fileDir)) {
                 if (self::makeUploadDir($fileDir)) {
                     file_put_contents($path, $fileContent);
                 } else {
                     //文件写入失败，写入错误日志
                     self::writeErrorLog($path_relatively, "[local]Directory creation failed");
+                    return false;
                 }
             } else {
                 file_put_contents($path, $fileContent);
             }
         }
-
         //返回相对存储路径
         return array(
             'name' => $file['name'],
@@ -225,6 +215,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
             'type' => $ext,
             'mime' => @Typecho_Common::mimeContentType($path)
         );
+
     }
 
     /**
@@ -250,6 +241,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $uploadfile = self::getUploadFile($file);
         //如果没有临时文件，则退出
         if (!isset($uploadfile)) {
+            self::writeErrorLog($path, "[local] modify: do not have temp file");
             return false;
         }
         $fileContent = file_get_contents($uploadfile);
@@ -258,20 +250,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $filename = __TYPECHO_ROOT_DIR__ . $path;//本地文件绝对路径
         $github_path = $options->githubDirectory . str_replace(self::getUploadDir(), "", $content['attachment']->path);
 
-        //获取文件sha
-        $header = array(
-            "Content-Type:application/json",
-            "User-Agent:" . $options->githubRepo
-        );
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "https://api.github.com/repos/" . $options->githubUser . "/" . $options->githubRepo . "/contents" . $github_path);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        $output = json_decode(curl_exec($ch), true);
-        curl_close($ch);
-        $sha = $output['sha'];
+        $sha = self::getFileSha($github_path);
 
         /* 更新Github仓库内文件 */
         $data = array(
@@ -286,32 +265,19 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
             );
             $data['committer'] = $committer;
         }
-        $header = array(
-            "Content-Type:application/json",
-            "User-Agent:" . $options->githubRepo
-        );
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "https://api.github.com/repos/" . $options->githubUser . "/" . $options->githubRepo . "/contents" . $path . "?access_token=" . $options->githubToken);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        $output = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
-        if ($http_code != 200) {
-            $output = json_decode($output,true);
-            self::writeErrorLog($github_path, "[Github][modify][" . $http_code . "]" . $output['message']);
-        }
+        $ok = self::curlGithub("Modify","PUT",$data,$path)["ok"];
 
         //开始处理本地的文件
         if ($options->ifSave == 'save') {
-            if (file_exists($filename)) {
-                unlink($filename);
+            if ($ok){
+                if (file_exists($filename)) {
+                    unlink($filename);
+                }
+                file_put_contents($filename, $fileContent);
+            }else{
+                return false;
             }
-            file_put_contents($filename, $fileContent);
         }
 
         if (!isset($file['size'])) {
@@ -328,6 +294,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         );
     }
 
+
     /**
      * 删除文件处理函数
      */
@@ -340,20 +307,8 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $filename = __TYPECHO_ROOT_DIR__ . $content['attachment']->path;
         $github_path = $options->githubDirectory . str_replace(self::getUploadDir(), "", $content['attachment']->path);
 
-        //获取文件sha
-        $header = array(
-            "Content-Type:application/json",
-            "User-Agent:" . $options->githubRepo
-        );
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "https://api.github.com/repos/" . $options->githubUser . "/" . $options->githubRepo . "/contents" . $github_path);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        $output = json_decode(curl_exec($ch), true);
-        curl_close($ch);
-        $sha = $output['sha'];
+
+        $sha = self::getFileSha($github_path);
 
         /* 删除Github仓库内文件 */
         $data = array(
@@ -367,31 +322,52 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
             );
             $data['committer'] = $committer;
         }
+
+        $ok = self::curlGithub("DELETE","DELETE",$data,$github_path)["ok"];
+
+        //删除本地文件
+        if ($options->ifSave == 'save' && file_exists($filename) == true) {
+            if ($ok){
+                unlink($filename);
+            }else{
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    public static function getFileSha($github_path){
+        $output = self::curlGithub("GetSha","GET",[],$github_path)["output"];
+        return $output["sha"];
+
+    }
+    public static function curlGithub($type,$op,$data,$github_path){
+        $options = Typecho_Widget::widget('Widget_Options')->plugin('UploadGithubForTypecho');
+
         $header = array(
-            "Content-Type:application/json",
-            "User-Agent:" . $options->githubRepo
+            "Content-Type:application/vnd.github.v3.json",
+            "User-Agent:" . $options->githubRepo,
+            "Authorization: token " . $options->githubToken
         );
+
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "https://api.github.com/repos/" . $options->githubUser . "/" . $options->githubRepo . "/contents" . $github_path . "?access_token=" . $options->githubToken);
+        curl_setopt($ch, CURLOPT_URL, "https://api.github.com/repos/" . $options->githubUser . "/" . $options->githubRepo . "/contents" . $github_path);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $op);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        $output = curl_exec($ch);
+        if (count($data)){
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        }
+        $output = json_decode(curl_exec($ch), true);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($http_code != 200) {
-            $output = json_decode($output,true);
-            self::writeErrorLog($github_path, "[Github][delete][" . $http_code . "]" . $output['message']);
+        if ($http_code != 200 && $http_code != 201) {
+            self::writeErrorLog($github_path, "[Github][".$type."][" . $http_code . "]" . $output['message']);
         }
-        //删除本地文件
-        if ($options->ifSave == 'save' && file_exists($filename) == true) {
-            unlink($filename);
-        }
-
-        return true;
+        return array("output"=>$output,"http_code"=>$http_code,"ok"=>$http_code != 200 && $http_code != 201);
     }
 
     /**
@@ -404,6 +380,19 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         return file_get_contents($filePath);
     }
 
+
+    /**
+     * 获取插件的版本号
+     */
+    public static function getPluginVersion($className, $dirName)
+    {
+        if (class_exists($className)) {
+            $plugins = Typecho_Plugin::parseInfo(__TYPECHO_ROOT_DIR__ . __TYPECHO_PLUGIN_DIR__ . "/" . $dirName . "/Plugin.php");
+            return $plugins["version"];
+        } else {
+            return "-1";
+        }
+    }
 
     /**
      * 获取实际文件绝对访问路径
