@@ -24,7 +24,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         Typecho_Plugin::factory('Widget_Upload')->uploadHandle = array('UploadGithubForTypecho_Plugin', 'uploadHandle');
         Typecho_Plugin::factory('Widget_Upload')->modifyHandle = array('UploadGithubForTypecho_Plugin', 'modifyHandle');
         Typecho_Plugin::factory('Widget_Upload')->deleteHandle = array('UploadGithubForTypecho_Plugin', 'deleteHandle');
-//        Typecho_Plugin::factory('Widget_Upload')->attachmentHandle = array('UploadGithubForTypecho_Plugin', 'attachmentHandle');
+        Typecho_Plugin::factory('Widget_Upload')->attachmentHandle = array('UploadGithubForTypecho_Plugin', 'attachmentHandle');
         Typecho_Plugin::factory('Widget_Upload')->attachmentDataHandle = array('UploadGithubForTypecho_Plugin', 'attachmentDataHandle');
         return _t('插件已激活，请前往设置');
     }
@@ -389,13 +389,16 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
      */
     public static function attachmentHandle($content)
     {
-        //获取设置参数
-        $options = Typecho_Widget::widget('Widget_Options')->plugin('UploadGithubForTypecho');
-        $latest = "";
-        if ($options->urlType == "latest") {
-            $latest = "@latest";
-        }
-        return Typecho_Common::url($content['attachment']->path, "https://cdn.jsdelivr.net/gh/" . $options->githubUser . "/" . $options->githubRepo . $latest);
+        $options = Typecho_Widget::widget('Widget_Options');
+        return Typecho_Common::url($content['attachment']->path,
+            defined('__TYPECHO_UPLOAD_URL__') ? __TYPECHO_UPLOAD_URL__ : $options->siteUrl);
+//        //获取设置参数
+//        $options = Typecho_Widget::widget('Widget_Options')->plugin('UploadGithubForTypecho');
+//        $latest = "";
+//        if ($options->urlType == "latest") {
+//            $latest = "@latest";
+//        }
+//        return Typecho_Common::url($content['attachment']->path, "https://cdn.jsdelivr.net/gh/" . $options->githubUser . "/" . $options->githubRepo . $latest);
     }
 
     private static function writeErrorLog($path, $content)
