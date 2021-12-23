@@ -24,7 +24,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         Typecho_Plugin::factory('Widget_Upload')->uploadHandle = array('UploadGithubForTypecho_Plugin', 'uploadHandle');
         Typecho_Plugin::factory('Widget_Upload')->modifyHandle = array('UploadGithubForTypecho_Plugin', 'modifyHandle');
         Typecho_Plugin::factory('Widget_Upload')->deleteHandle = array('UploadGithubForTypecho_Plugin', 'deleteHandle');
-        Typecho_Plugin::factory('Widget_Upload')->attachmentHandle = array('UploadGithubForTypecho_Plugin', 'attachmentHandle');
+//        Typecho_Plugin::factory('Widget_Upload')->attachmentHandle = array('UploadGithubForTypecho_Plugin', 'attachmentHandle');
         Typecho_Plugin::factory('Widget_Upload')->attachmentDataHandle = array('UploadGithubForTypecho_Plugin', 'attachmentDataHandle');
         return _t('插件已激活，请前往设置');
     }
