@@ -174,17 +174,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
 
 
         /* 上传到Github */
-        $data = array(
-            "message" => "Upload file " . $fileName,
-            "content" => base64_encode($fileContent),
-        );
-        if ($options->commitName != null && $options->commitEmail != null) {
-            $committer = array(
-                "name" => $options->commitName,
-                "email" => $options->commitEmail
-            );
-            $data['committer'] = $committer;
-        }
+        $data = self::getCurlData("Upload",$fileName,$fileContent);
 
         $ok = self::curlGithub("Upload","PUT",$data,$path_relatively)["ok"];
 
@@ -218,6 +208,27 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
 
     }
 
+    public static function getCurlData($type, $filePath,$fileContent="",$sha =""){
+        $data = array(
+            "message" => $type." file " . str_replace(self::getUploadDir(), "", $filePath),
+        );
+        if ($fileContent!=""){
+            $data["content"] = base64_encode($fileContent);
+        }
+        if ($sha != ""){
+            $data["sha"] = $sha;
+        }
+        $options = Typecho_Widget::widget('Widget_Options')->plugin('UploadGithubForTypecho');
+
+        if ($options->commitName != null && $options->commitEmail != null) {
+            $committer = array(
+                "name" => $options->commitName,
+                "email" => $options->commitEmail
+            );
+            $data['committer'] = $committer;
+        }
+        return $data;
+    }
     /**
      * 修改文件处理函数
      */
@@ -253,18 +264,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $sha = self::getFileSha($github_path);
 
         /* 更新Github仓库内文件 */
-        $data = array(
-            "message" => "Modify file " . str_replace(self::getUploadDir(), "", $content['attachment']->path),
-            "content" => base64_encode($fileContent),
-            "sha" => $sha,
-        );
-        if ($options->commitName != null && $options->commitEmail != null) {
-            $committer = array(
-                "name" => $options->commitName,
-                "email" => $options->commitEmail
-            );
-            $data['committer'] = $committer;
-        }
+        $data = self::getCurlData("Modify",$content['attachment']->path,$fileContent,$sha);
 
         $ok = self::curlGithub("Modify","PUT",$data,$path)["ok"];
 
@@ -311,17 +311,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         $sha = self::getFileSha($github_path);
 
         /* 删除Github仓库内文件 */
-        $data = array(
-            "message" => "Delete file",
-            "sha" => $sha,
-        );
-        if ($options->commitName != null && $options->commitEmail != null) {
-            $committer = array(
-                "name" => $options->commitName,
-                "email" => $options->commitEmail
-            );
-            $data['committer'] = $committer;
-        }
+        $data = self::getCurlData("Delete",$content['attachment']->path,"",$sha);
 
         $ok = self::curlGithub("DELETE","DELETE",$data,$github_path)["ok"];
 
