@@ -178,24 +178,25 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
 
         $ok = self::curlGithub("Upload","PUT",$data,$path_relatively)["ok"];
 
-        // todo github上传成功才写到本地
         /* 写到本地文件 */
         if ($options->ifSave == 'save') {
             if ($ok){
+                if (!is_dir($fileDir)) {
+                    if (self::makeUploadDir($fileDir)) {
+                        file_put_contents($path, $fileContent);
+                    } else {
+                        //文件写入失败，写入错误日志
+                        self::writeErrorLog($path_relatively, "[local]Directory creation failed");
+                        return false;
+                    }
+                } else {
+                    file_put_contents($path, $fileContent);
+                }
+            }else{
                 self::writeErrorLog($file['name'], "[local] not allowed file type or engine");
                 return false;// 似乎不能自定义抛出具体错误
             }
-            if (!is_dir($fileDir)) {
-                if (self::makeUploadDir($fileDir)) {
-                    file_put_contents($path, $fileContent);
-                } else {
-                    //文件写入失败，写入错误日志
-                    self::writeErrorLog($path_relatively, "[local]Directory creation failed");
-                    return false;
-                }
-            } else {
-                file_put_contents($path, $fileContent);
-            }
+
         }
         //返回相对存储路径
         return array(
@@ -357,7 +358,7 @@ class UploadGithubForTypecho_Plugin implements Typecho_Plugin_Interface
         if ($http_code != 200 && $http_code != 201) {
             self::writeErrorLog($github_path, "[Github][".$type."][" . $http_code . "]" . $output['message']);
         }
-        return array("output"=>$output,"http_code"=>$http_code,"ok"=>$http_code != 200 && $http_code != 201);
+        return array("output"=>$output,"http_code"=>$http_code,"ok"=>$http_code == 200 || $http_code == 201);
     }
 
     /**
